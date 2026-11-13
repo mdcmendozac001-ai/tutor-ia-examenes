@@ -76,17 +76,25 @@ def main():
             st.error("🔑 Falta la GEMINI_API_KEY en los Secrets de Streamlit")
             st.stop()
         
-        # 2. SELECCIÓN MANUAL DEL MODELO (LA CLAVE DEL ÉXITO)
-        st.markdown("**Nombre del modelo:**")
-        st.caption("Si Google te dio un error 404, pega aquí el nombre exacto que te pidió.")
-        modelo_nombre = st.text_input("Modelo", value="gemini-1.5-flash", key="modelo_input")
+        # 2. MENÚ DESPLEGABLE DE MODELOS (A PRUEBA DE ERRORES 404)
+        st.markdown("**Modelo de IA:**")
+        modelo_nombre = st.selectbox(
+            "Selecciona uno:",
+            options=[
+                "gemini-pro",               # 🏆 EL MÁS ESTABLE Y RECOMENDADO
+                "gemini-1.5-flash-latest",  # Versión más reciente y rápida
+                "gemini-1.5-pro-latest",    # Versión más reciente y potente
+                "gemini-1.0-pro"            # Versión clásica, muy compatible
+            ],
+            index=0 # Empieza con gemini-pro por defecto
+        )
         
         try:
             genai.configure(api_key=api_key)
             model = genai.GenerativeModel(modelo_nombre)
             st.success(f"✅ Modelo `{modelo_nombre}` cargado correctamente")
         except Exception as e:
-            st.error(f"❌ Error al cargar el modelo: {str(e)}")
+            st.error(f"❌ Error al cargar: {str(e)}")
             st.stop()
             
         st.divider()
@@ -107,7 +115,7 @@ def main():
                 for archivo in archivos:
                     texto = procesar_archivo(archivo)
                     if texto and not texto.startswith("Error"):
-                        contexto_total += f"\n\n--- ARCHIVO: {archivo.name} ---\n{texto[:3000]}" # Limitamos para no saturar
+                        contexto_total += f"\n\n--- ARCHIVO: {archivo.name} ---\n{texto[:3000]}"
             st.success(f"✅ {len(archivos)} archivo(s) procesados")
         
         st.divider()
@@ -131,30 +139,25 @@ def main():
 
     # ============ PROCESAR ENTRADA DEL USUARIO ============
     if prompt := st.chat_input("Escribe tu pregunta o /pregunta..."):
-        # 1. Mostrar mensaje del usuario
         st.session_state.mensajes.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
         
-        # 2. Preparar el prompt para la IA
         system_prompt = f"""Eres un tutor experto. Responde SOLO basándote en este material:
 {contexto_total[:4000]}
 
 Si el usuario escribe '/pregunta', genera UNA pregunta de examen con opciones múltiples y espera su respuesta.
 Si el usuario responde a una pregunta, evalúa dando: 📊 Puntuación (0-10), ✅ Respuesta correcta, 💬 Feedback."""
 
-        # Historial limitado a los últimos 4 mensajes para evitar lentitud
         chat_history = []
         for msg in st.session_state.mensajes[-4:]:
             if msg["role"] != "system":
                 role = "user" if msg["role"] == "user" else "model"
                 chat_history.append({"role": role, "parts": [msg["content"]]})
         
-        # 3. Llamar a la IA (SIN THREADS, de forma nativa y estable)
         with st.spinner(f"🤔 Pensando con {modelo_nombre}..."):
             try:
                 chat = model.start_chat(history=chat_history)
-                # Combinamos el system prompt con el último mensaje solo si es el inicio
                 if len(st.session_state.mensajes) <= 2:
                     final_prompt = f"{system_prompt}\n\nUsuario: {prompt}"
                 else:
@@ -163,13 +166,12 @@ Si el usuario responde a una pregunta, evalúa dando: 📊 Puntuación (0-10), �
                 response = chat.send_message(final_prompt)
                 respuesta = response.text
                 
-                # 4. Mostrar respuesta de la IA
                 st.session_state.mensajes.append({"role": "assistant", "content": respuesta})
                 with st.chat_message("assistant"):
                     st.markdown(respuesta)
                     
             except Exception as e:
-                error_msg = f"❌ **Error de la API:** {str(e)}\n\n💡 *Solución:* Verifica en la barra lateral que el nombre del modelo sea correcto (prueba con 'gemini-1.5-flash' o 'gemini-pro')."
+                error_msg = f"❌ **Error de la API:** {str(e)}\n\n💡 *Solución:* Cambia el modelo en el menú desplegable de la barra lateral a otra opción (ej. 'gemini-1.0-pro')."
                 st.session_state.mensajes.append({"role": "assistant", "content": error_msg})
                 with st.chat_message("assistant"):
                     st.error(error_msg)
